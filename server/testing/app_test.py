@@ -27,7 +27,7 @@ class TestPlant:
             plant_1.is_in_stock = True
             db.session.add(plant_1)
             db.session.commit()
-            
+
         response = app.test_client().patch(
             '/plants/1',
             json = {
@@ -52,7 +52,7 @@ class TestPlant:
 
             db.session.add(lo)
             db.session.commit()
-            
+
             response = app.test_client().delete(f'/plants/{lo.id}')
             data = response.data.decode()
 
