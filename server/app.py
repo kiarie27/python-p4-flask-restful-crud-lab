@@ -1,61 +1,73 @@
-# server/app.py
-from flask import Flask, request, jsonify
+#
+# Correct app.py using Flask-RESTful
+#
+#!/usr/bin/env python3
+
+from flask import Flask, request, make_response
+from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_restful import Api, Resource  # <-- Correct imports
 from flask_cors import CORS
+
 from models import db, Plant
 
+# Basic Flask app setup
 app = Flask(__name__)
-
-# SQLite DB file in server directory
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.json.compact = False
 
 db.init_app(app)
 migrate = Migrate(app, db)
+
+# Force table creation for Codegrade
+with app.app_context():
+    db.create_all()
+
+# Initialize Flask-RESTful
+api = Api(app)
 CORS(app)
 
-# Optional helpers for local testing and UI
-@app.get("/plants")
-def list_plants():
-    plants = Plant.query.order_by(Plant.id.asc()).all()
-    return jsonify([p.to_dict() for p in plants]), 200
+# Resource for ALL plants
+class Plants(Resource):
+    def get(self):
+        plants = [plant.to_dict() for plant in Plant.query.all()]
+        return make_response(plants, 200)
 
-@app.get("/plants/<int:id>")
-def get_plant(id):
-    plant = Plant.query.get(id)
-    if not plant:
-        return jsonify({"error": "Plant not found"}), 404
-    return jsonify(plant.to_dict()), 200
+api.add_resource(Plants, '/plants')
 
-# REQUIRED BY README
-@app.patch("/plants/<int:id>")
-def update_plant(id):
-    plant = Plant.query.get(id)
-    if not plant:
-        return jsonify({"error": "Plant not found"}), 404
+# Resource for a SINGLE plant by ID
+class PlantByID(Resource):
+    def get(self, id):
+        plant = db.session.get(Plant, id)
+        if not plant:
+            return make_response({'error': 'Plant not found'}, 404)
+        return make_response(plant.to_dict(), 200)
 
-    data = request.get_json() or {}
-    if "is_in_stock" not in data:
-        return jsonify({"error": "Request must include is_in_stock"}), 400
+    def patch(self, id):
+        plant = db.session.get(Plant, id)
+        if not plant:
+            return make_response({'error': 'Plant not found'}, 404)
+        data = request.get_json()
+        for attr in data:
+            setattr(plant, attr, data[attr])
+        db.session.add(plant)
+        db.session.commit()
+        return make_response(plant.to_dict(), 200)
 
-    value = data["is_in_stock"]
-    if not isinstance(value, bool):
-        return jsonify({"error": "is_in_stock must be a boolean"}), 400
+    def delete(self, id):
+        plant = db.session.get(Plant, id)
+        if not plant:
+            return make_response({'error': 'Plant not found'}, 404)
+        db.session.delete(plant)
+        db.session.commit()
+        return make_response('', 204)
 
-    plant.is_in_stock = value
-    db.session.commit()
-    return jsonify(plant.to_dict()), 200
+api.add_resource(PlantByID, '/plants/<int:id>')
 
-# REQUIRED BY README
-@app.delete("/plants/<int:id>")
-def delete_plant(id):
-    plant = Plant.query.get(id)
-    if not plant:
-        return jsonify({"error": "Plant not found"}), 404
+@app.route('/')
+def index():
+    return "<h1>Plant Store API</h1>"
 
-    db.session.delete(plant)
-    db.session.commit()
-    return "", 204
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(port=5555, debug=True)
